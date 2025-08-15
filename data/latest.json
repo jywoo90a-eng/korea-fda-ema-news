@@ -1,0 +1,21 @@
+{
+  "generated_at": "2025-08-15T12:03:26",
+  "items": [
+    {
+      "title": "예시) 셀트리온, 미국 FDA 품목허가 소식",
+      "link": "https://example.com/news1",
+      "summary": "데모 데이터입니다. 실제 실행 시 자동으로 최신 기사로 교체됩니다.",
+      "published": "2025-08-15T00:10:00+09:00",
+      "label": "FDA",
+      "source": "데모"
+    },
+    {
+      "title": "예시) 삼성바이오에피스, 유럽 EMA 승인 소식",
+      "link": "https://example.com/news2",
+      "summary": "데모 데이터입니다. 실제 실행 시 자동으로 최신 기사로 교체됩니다.",
+      "published": "2025-08-14T14:30:00+09:00",
+      "label": "EMA",
+      "source": "데모"
+    }
+  ]
+}

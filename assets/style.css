@@ -1,0 +1,29 @@
+
+:root{
+  --bg:#0b1020;
+  --card:#12172a;
+  --text:#e8ecff;
+  --muted:#a7b0d9;
+  --accent:#7aa2ff;
+  --badge-fda:#8ad0ff;
+  --badge-ema:#b5ffa4;
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0;background:var(--bg);color:var(--text);font-family:ui-sans-serif,system-ui,Segoe UI,Apple SD Gothic Neo,Malgun Gothic,Apple Color Emoji,Noto Color Emoji,Arial}
+.container{max-width:1100px;margin:0 auto;padding:24px}
+h1{margin:0 0 8px;font-size:28px;font-weight:800;letter-spacing:-.01em}
+.sub{margin:0 0 12px;color:var(--muted)}
+.controls{display:flex;gap:12px;flex-wrap:wrap;align-items:center;margin:8px 0 16px}
+input[type="search"]{flex:1;min-width:260px;padding:12px 14px;border-radius:12px;border:1px solid #26304f;background:#0f1430;color:var(--text);outline:none}
+.filters{display:flex;gap:14px;align-items:center;color:var(--muted)}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px}
+.card{position:relative;background:var(--card);border:1px solid #253058;border-radius:16px;padding:16px;display:flex;flex-direction:column;gap:8px;box-shadow:0 6px 20px rgba(0,0,0,.25)}
+.card .badge{position:absolute;top:12px;right:12px;padding:6px 10px;border-radius:999px;font-size:12px;font-weight:700;color:#091126;background:var(--badge-fda)}
+.card .badge.EMA{background:var(--badge-ema)}
+.card .title{color:var(--text);font-weight:700;text-decoration:none;line-height:1.35}
+.card .title:hover{color:var(--accent)}
+.card .meta{font-size:12px;color:var(--muted)}
+.card .source{font-size:12px;color:#c7d4ff}
+.last-updated{color:var(--muted);margin:6px 0 18px;font-size:13px}
+.foot{opacity:.7;font-size:12px}
+label{cursor:pointer}
