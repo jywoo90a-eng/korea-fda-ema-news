@@ -1,41 +1,51 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Google News RSS를 활용해 한국 기사 중 FDA/EMA 승인 관련 뉴스를 수집하여
-data/YYYY-MM-DD.json 및 data/latest.json으로 저장합니다.
+네이버 뉴스 검색 결과를 기간(시작~종료일)으로 수집해서
+data/latest.json 및 data/<from>_to_<to>.json 저장.
 
-- 의존성: feedparser, requests, python-dateutil
-- 실행: python scripts/fetch_news.py
-- 환경: GitHub Actions 또는 로컬
+• 입력(환경변수 또는 CLI 인자):
+  START=YYYY-MM-DD, END=YYYY-MM-DD (미입력 시 오늘=KST 기준)
+• 의존성: requests, beautifulsoup4, feedparser(불필요하면 제거 가능)
 """
-import os, json, re, time, html
-from datetime import datetime, timezone
-from urllib.parse import quote_plus
-import feedparser
 
+import os, re, json, html, time
+from datetime import datetime, timedelta, timezone
+from urllib.parse import quote_plus
+import requests
+from bs4 import BeautifulSoup
+
+KST = timezone(timedelta(hours=9))
 ROOT = os.path.dirname(os.path.dirname(__file__))
 DATA = os.path.join(ROOT, "data")
 os.makedirs(DATA, exist_ok=True)
 
+# 검색 쿼리 (한국기사 FDA/EMA 승인)
 QUERIES = [
-    # FDA 관련 한국어 검색
     'FDA 승인 한국 기업',
     'FDA 허가 한국 기업',
-    'FDA 품목허가 한국',
-    # EMA 관련 한국어 검색
     'EMA 승인 한국 기업',
     'EMA 허가 한국 기업',
+    '품목허가 FDA 한국',
+    '품목허가 EMA 한국',
 ]
 
-# 한국어 뉴스 우선
-BASE = 'https://news.google.com/rss/search?hl=ko&gl=KR&ceid=KR:ko&q='
-
-KEYWORDS_FDA = re.compile(r'\bFDA\b|식품의약국|미국\s*식품의약국|품목허가', re.I)
-KEYWORDS_EMA = re.compile(r'\bEMA\b|유럽\s*의약품청|유럽의약품청', re.I)
+KEYWORDS_FDA = re.compile(r'\bFDA\b|미국\s*식품의약국|품목허가', re.I)
+KEYWORDS_EMA = re.compile(r'\bEMA\b|유럽\s*의약품청', re.I)
 KEYWORDS_APPROVAL = re.compile(r'승인|허가|품목허가', re.I)
 
-# 한국 매체 우선 (강제는 아님)
-KOREAN_TLDS = ('.kr', 'naver.com', 'daum.net', 'chosun.com', 'hankyung.com', 'mk.co.kr', 'donga.com', 'joongang.co.kr', 'sedaily.com', 'etnews.com', 'hankyoreh.com', 'edaily.co.kr', 'yna.co.kr')
+HEADERS = {
+    "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
+                  "(KHTML, like Gecko) Chrome/124.0 Safari/537.36"
+}
+
+def kst_today_ymd():
+    return datetime.now(KST).strftime("%Y-%m-%d")
+
+def ymd_to_naver_params(ymd: str):
+    # Naver는 ds/de=YYYY.MM.DD, nso=fromYYYYMMDDtoYYYYMMDD 형식
+    dt = datetime.strptime(ymd, "%Y-%m-%d")
+    return dt.strftime("%Y.%m.%d"), dt.strftime("%Y%m%d")
 
 def guess_label(title, summary):
     t = f"{title} {summary or ''}"
@@ -43,81 +53,114 @@ def guess_label(title, summary):
         return "EMA"
     if KEYWORDS_FDA.search(t):
         return "FDA"
-    # 둘 다 없는 경우 요약 키워드로 추정
     if KEYWORDS_APPROVAL.search(t):
-        # 모호하면 FDA로 기본
         return "FDA"
     return None
 
-def is_korean_source(link):
-    try:
-        from urllib.parse import urlparse
-        host = urlparse(link).hostname or ''
-        return any(host.endswith(tld) for tld in KOREAN_TLDS)
-    except Exception:
-        return False
+def parse_list_page(html_text):
+    soup = BeautifulSoup(html_text, "html.parser")
+    cards = []
+    for area in soup.select("div.news_area"):
+        a = area.select_one("a.news_tit")
+        if not a: 
+            continue
+        title = (a.get("title") or a.text or "").strip()
+        link = a.get("href") or ""
+        press = (area.select_one("a.info.press") or area.select_one("span.info")).get_text(strip=True) if area.select_one("a.info.press") or area.select_one("span.info") else ""
+        # 날짜: 보통 span.info 중 하나에 있음
+        date_text = ""
+        for s in area.select("span.info"):
+            txt = s.get_text(strip=True)
+            if any(x in txt for x in ["분 전","시간 전","일 전",".","-","202","201"]):
+                date_text = txt
+        # 네이버 상대 시간/날짜를 대충 ISO 로 변환 (KST)
+        published = normalize_published(date_text)
 
-def fetch_all():
+        summary = ""
+        dsc = area.select_one("div.news_dsc")
+        if dsc:
+            summary = dsc.get_text(" ", strip=True)
+
+        cards.append({
+            "title": title,
+            "link": link,
+            "summary": summary[:280],
+            "published": published,
+            "source": press
+        })
+    return cards
+
+def normalize_published(txt):
+    now = datetime.now(KST)
+    try:
+        if "분 전" in txt:
+            m = int(re.findall(r"(\d+)\s*분", txt)[0])
+            dt = now - timedelta(minutes=m)
+        elif "시간 전" in txt:
+            h = int(re.findall(r"(\d+)\s*시간", txt)[0])
+            dt = now - timedelta(hours=h)
+        elif "일 전" in txt:
+            d = int(re.findall(r"(\d+)\s*일", txt)[0])
+            dt = now - timedelta(days=d)
+        else:
+            # 예: 2025.08.15.
+            txt = txt.replace(" ", "")
+            dt = datetime.strptime(re.sub(r"[^\d\.]", "", txt), "%Y.%m.%d").replace(tzinfo=KST)
+        return dt.isoformat()
+    except Exception:
+        return now.isoformat()
+
+def fetch_range(start_ymd: str, end_ymd: str):
+    ds_dot, ds_compact = ymd_to_naver_params(start_ymd)
+    de_dot, de_compact = ymd_to_naver_params(end_ymd)
+    nso = f"so:r,p:from{ds_compact}to{de_compact}"
     items = []
     seen = set()
+
     for q in QUERIES:
-        url = BASE + quote_plus(q)
-        feed = feedparser.parse(url)
-        for e in feed.entries:
-            title = html.unescape(getattr(e, "title", "") or "").strip()
-            link = getattr(e, "link", "").strip()
-            summary = html.unescape(getattr(e, "summary", "") or "").strip()
-            published = getattr(e, "published", "") or getattr(e, "updated", "") or ""
-            # dedupe by link
-            if not link or link in seen:
-                continue
-            seen.add(link)
-            label = guess_label(title, summary)
-            if not label:
-                continue
-            # 한국 매체 우선 필터 (완전 배제는 하지 않음)
-            if not is_korean_source(link):
-                # 한국어 기사지만 해외 도메인일 수 있어 통과는 시킴
-                pass
-            items.append({
-                "title": title,
-                "link": link,
-                "summary": summary[:280],
-                "published": parse_to_iso(published),
-                "label": label,
-                "source": getattr(e, "source", {}).get("title") if isinstance(getattr(e, "source", None), dict) else getattr(e, "source", None)
-            })
-    # 최신순 정렬
+        page = 1
+        while page <= 3:  # 페이지 더 늘릴 수 있음
+            url = ("https://search.naver.com/search.naver?where=news&sm=tab_opt"
+                   f"&query={quote_plus(q)}&sort=1&ds={ds_dot}&de={de_dot}&nso={nso}&start={(page-1)*10+1}")
+            res = requests.get(url, headers=HEADERS, timeout=15)
+            res.raise_for_status()
+            batch = parse_list_page(res.text)
+            if not batch:
+                break
+            for it in batch:
+                if it["link"] in seen:
+                    continue
+                seen.add(it["link"])
+                label = guess_label(it["title"], it["summary"])
+                if not label:
+                    continue
+                it["label"] = label
+                items.append(it)
+            page += 1
+            time.sleep(0.6)  # 매너 대기
+    # 최신순
     items.sort(key=lambda x: x["published"], reverse=True)
     return items
 
-def parse_to_iso(pub):
-    try:
-        # feedparser가 parsed_parsed 제공
-        # 이게 없거나 실패하면 현재 시각으로
-        return datetime(*feedparser._parse_date(pub)[:6], tzinfo=timezone.utc).isoformat()
-    except Exception:
-        try:
-            # entry.published_parsed 접근
-            return datetime.utcnow().replace(tzinfo=timezone.utc).isoformat()
-        except Exception:
-            return datetime.utcnow().replace(tzinfo=timezone.utc).isoformat()
-
 def main():
-    items = fetch_all()
-    today = datetime.now(timezone.utc).astimezone().isoformat(timespec='seconds')
-    payload = {
-        "generated_at": today,
-        "items": items
-    }
-    # save latest
+    start = os.environ.get("START") or (len(os.sys.argv) > 1 and os.sys.argv[1]) or kst_today_ymd()
+    end   = os.environ.get("END")   or (len(os.sys.argv) > 2 and os.sys.argv[2]) or start
+
+    items = fetch_range(start, end)
+
+    now_kst = datetime.now(KST).isoformat(timespec="seconds")
+    payload = {"generated_at": now_kst, "range": {"start": start, "end": end}, "items": items}
+
+    # latest.json 갱신
     with open(os.path.join(DATA, "latest.json"), "w", encoding="utf-8") as f:
         json.dump(payload, f, ensure_ascii=False, indent=2)
-    # save dated file
-    ymd = datetime.now().strftime("%Y-%m-%d")
-    with open(os.path.join(DATA, f"{ymd}.json"), "w", encoding="utf-8") as f:
+
+    # 범위 파일 저장
+    name = f"{start}_to_{end}.json"
+    with open(os.path.join(DATA, name), "w", encoding="utf-8") as f:
         json.dump(payload, f, ensure_ascii=False, indent=2)
-    print(f"Saved {len(items)} items.")
+
+    print(f"Saved {len(items)} items for {start}~{end} (KST).")
 
 if __name__ == "__main__":
     main()
