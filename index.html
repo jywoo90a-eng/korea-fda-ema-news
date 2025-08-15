@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>한국기업 FDA/EMA 승인 뉴스 - 데일리 자동 업데이트</title>
+  <meta name="description" content="한국 기사 중 FDA/EMA 승인 관련 뉴스를 매일 자동 수집·정리해 보여주는 페이지입니다." />
+  <link rel="stylesheet" href="./assets/style.css" />
+</head>
+<body>
+  <header class="container">
+    <h1>🇰🇷 한국기업 FDA/EMA 승인 기사 모아보기</h1>
+    <p class="sub">
+      매일 1회 자동 수집 · 최신순 정렬. (출처: 한국어 뉴스 / Google News RSS)
+    </p>
+    <div class="controls">
+      <input id="search" type="search" placeholder="기업명·키워드 검색 (예: 셀트리온, 승인, 허가)" />
+      <div class="filters">
+        <label><input type="checkbox" id="filter-fda" checked /> FDA</label>
+        <label><input type="checkbox" id="filter-ema" checked /> EMA</label>
+        <label><input type="checkbox" id="filter-today"/> 오늘</label>
+      </div>
+    </div>
+  </header>
+
+  <main class="container">
+    <div id="last-updated" class="last-updated"></div>
+    <div id="results" class="grid"></div>
+    <template id="card-tpl">
+      <article class="card">
+        <div class="badge"></div>
+        <a class="title" target="_blank" rel="noopener noreferrer"></a>
+        <div class="meta"></div>
+        <div class="source"></div>
+      </article>
+    </template>
+  </main>
+
+  <footer class="container foot">
+    <p>
+      데이터는 자동 수집 스크립트로 업데이트됩니다. 
+      오류/제보: 리포지토리 이슈에 남겨주세요.
+    </p>
+  </footer>
+
+  <script src="./assets/app.js"></script>
+</body>
+</html>
