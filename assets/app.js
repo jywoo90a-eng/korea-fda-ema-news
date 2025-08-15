@@ -1,4 +1,3 @@
-
 (async function(){
   const $q = s => document.querySelector(s);
   const $results = $q('#results');
@@ -8,6 +7,12 @@
   const $today = $q('#filter-today');
   const $tpl = $q('#card-tpl');
   const $last = $q('#last-updated');
+
+  // KST YYYY-MM-DD
+  const kstYmd = () => {
+    const fmt = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Seoul', year: 'numeric', month: '2-digit', day: '2-digit' });
+    return fmt.format(new Date()); // e.g. "2025-08-15"
+  };
 
   async function load(){
     try{
@@ -25,19 +30,20 @@
   const state = { items: [] };
 
   function render(){
-    const q = ($search.value || '').trim();
-    const todayOn = $today.checked;
-    const now = new Date(); 
-    const ymd = now.toISOString().slice(0,10);
+    const q = ($search.value || '').trim().toLowerCase();
     const showFDA = $fda.checked, showEMA = $ema.checked;
+    const kst = kstYmd();
 
     const list = state.items.filter(it => {
-      if (todayOn && it.published.slice(0,10) !== ymd) return false;
+      if ($today.checked) {
+        // published의 앞 10자리만 비교 (KST로 저장되어 있음)
+        if ((it.published || '').slice(0,10) !== kst) return false;
+      }
       if (!showFDA && it.label === 'FDA') return false;
       if (!showEMA && it.label === 'EMA') return false;
       if (!q) return true;
       const hay = (it.title + ' ' + (it.summary || '') + ' ' + (it.source || '')).toLowerCase();
-      return hay.includes(q.toLowerCase());
+      return hay.includes(q);
     }).sort((a,b) => b._t - a._t);
 
     $results.innerHTML = '';
@@ -52,7 +58,7 @@
       $title.textContent = it.title;
       $title.href = it.link;
       const dt = new Date(it.published);
-      $meta.textContent = `${dt.toLocaleString()} · ${new URL(it.link).hostname}`;
+      $meta.textContent = `${dt.toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' })} · ${new URL(it.link).hostname}`;
       $source.textContent = it.source || '';
       $results.appendChild(node);
     }
@@ -64,6 +70,5 @@
 
   $search.addEventListener('input', render);
   [$fda,$ema,$today].forEach(el => el.addEventListener('change', render));
-
   load();
 })();
